@@ -8,7 +8,7 @@ is unfree and currently supports `x86_64-linux`.
 Run this from any directory:
 
 ```bash
-nix profile install github:j-a-sunny/nix-FDM
+nix profile install github:kreutzi/nix-FDM
 ```
 
 This installs the package from this repository's `main` branch and records the
@@ -24,7 +24,7 @@ Add this repository to your system flake inputs:
 
 ```nix
 {
-  inputs.nix-fdm.url = "github:j-a-sunny/nix-FDM";
+  inputs.nix-fdm.url = "github:kreutzi/nix-FDM";
 
   outputs = { self, nixpkgs, nix-fdm, ... }:
     {
