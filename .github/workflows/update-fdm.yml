@@ -1,0 +1,60 @@
+name: Update Free Download Manager
+
+on:
+  schedule:
+    # Weekly, Monday 06:00 UTC. FDM ships updates roughly monthly, so weekly
+    # polling catches new releases quickly without hammering their server.
+    - cron: "0 6 * * 1"
+  workflow_dispatch: {} # lets you trigger it manually from the Actions tab
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Fetch latest FDM version + hash
+        id: update
+        run: bash .github/scripts/update-fdm.sh
+
+      - name: Sanity-build the package
+        if: steps.update.outputs.changed == 'true'
+        run: |
+          nix build --impure --extra-experimental-features 'nix-command flakes' \
+            --expr '(import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/nixos-unstable.tar.gz") { config.allowUnfree = true; }).callPackage ./freedownloadmanager.nix {}' \
+            --no-link -L
+
+      - name: Open pull request
+        if: steps.update.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "freedownloadmanager: ${{ steps.update.outputs.old_version }} -> ${{ steps.update.outputs.new_version }}"
+          title: "freedownloadmanager: ${{ steps.update.outputs.old_version }} -> ${{ steps.update.outputs.new_version }}"
+          body: |
+            Automated update, opened because the build succeeded against the
+            new .deb from FDM's `/latest/` URL.
+
+            - Old version: `${{ steps.update.outputs.old_version }}`
+            - New version: `${{ steps.update.outputs.new_version }}`
+
+            Since FDM doesn't version this URL, this bumps both `version` and
+            `hash` in `freedownloadmanager.nix`. The build step above already
+            confirmed `autoPatchelf` resolved every dependency, but it's
+            still worth a quick smoke-test of the app itself before merging.
+          branch: update-fdm
+          delete-branch: true
+
+      - name: Enable auto-merge
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge update-fdm --auto --squash --delete-branch

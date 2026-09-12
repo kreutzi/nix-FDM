@@ -1,78 +1,118 @@
-{ lib
-, stdenv
-, fetchurl
-, dpkg
-, wrapGAppsHook
-, autoPatchelfHook
-, udev
-, libdrm
-, libpqxx
-, unixODBC
-, gst_all_1
-, xorg
-, libpulseaudio
-, mysql80
+{
+  lib,
+  stdenv,
+  fetchurl,
+  dpkg,
+  autoPatchelfHook,
+  udev,
+  libdrm,
+  libpqxx,
+  unixodbc,
+  gst_all_1,
+  libpulseaudio,
+  libtiff,
+  libxcb-cursor,
+  libxcb-wm,
+  libxcb-image,
+  libxcb-keysyms,
+  libxcb-render-util,
+  qt6,
+  gtk3,
+  pango,
+  atk,
+  cairo,
+  gdk-pixbuf,
+  autoStart ? false,
 }:
 
 stdenv.mkDerivation rec {
   pname = "freedownloadmanager";
-  version = "6.21.0.5639";
+  version = "6.34.4.6974";
 
   src = fetchurl {
     url = "https://files2.freedownloadmanager.org/6/latest/freedownloadmanager.deb";
-    hash = "sha256-rvntnE6dNRyw4KVY+oKG1pvn1tGfk0u6btWEyV3dBTU=";
+    hash = "sha256-KZxb7xgLV4riI+A6EIJ5w7gOx/m84+F5JGnUbe4vxs0=";
   };
 
   unpackPhase = "dpkg-deb -x $src .";
 
   nativeBuildInputs = [
     dpkg
-    wrapGAppsHook
     autoPatchelfHook
+    qt6.wrapQtAppsHook
   ];
 
   buildInputs = [
     libdrm
     libpqxx
-    unixODBC
+    unixodbc
     stdenv.cc.cc
-    mysql80
-  ] ++ (with gst_all_1; [
+    libtiff
+    libxcb-cursor
+    libxcb-wm
+    libxcb-image
+    libxcb-keysyms
+    libxcb-render-util
+    libpulseaudio
+    qt6.qtbase
+    gtk3
+    pango
+    atk
+    cairo
+    gdk-pixbuf
+  ]
+  ++ (with gst_all_1; [
     gstreamer
     gst-libav
     gst-plugins-base
     gst-plugins-good
     gst-plugins-bad
     gst-plugins-ugly
-  ])++(with xorg; [
-    xcbutilwm         # libxcb-icccm.so.4
-    xcbutilimage      # libxcb-image.so.0
-    xcbutilkeysyms    # libxcb-keysyms.so.1
-    xcbutilrenderutil # libxcb-render-util.so.0
-    libpulseaudio
   ]);
 
-  runtimeDependencies = [
-    (lib.getLib udev)
+  # These are all optional Qt SQL-plugin backends FDM bundles for its
+  # database storage feature (Oracle, Mimer, Firebird, MySQL) -- not needed
+  # for normal download-manager use, so we ignore rather than chase exact
+  # sonames that drift whenever the upstream client libs update.
+  autoPatchelfIgnoreMissingDeps = [
+    "libclntsh.so.23.1"
+    "libmimerapi.so"
+    "libfbclient.so.2"
+    "libmysqlclient.so.21"
   ];
+
+  preFixup = ''
+    ln -s ${lib.getLib libtiff}/lib/libtiff.so.6 $out/freedownloadmanager/lib/libtiff.so.5
+
+    qtWrapperArgs+=(
+      --prefix QT_PLUGIN_PATH : "$out/freedownloadmanager/plugins"
+      --prefix QML2_IMPORT_PATH : "$out/freedownloadmanager/qml"
+      --prefix LD_LIBRARY_PATH : "$out/freedownloadmanager/lib"
+    )
+  '';
 
   installPhase = ''
     mkdir -p $out/bin
+    mkdir -p $out/share/applications
     cp -r opt/freedownloadmanager $out
     cp -r usr/share $out
     ln -s $out/freedownloadmanager/fdm $out/bin/${pname}
 
     substituteInPlace $out/share/applications/freedownloadmanager.desktop \
-      --replace 'Exec=/opt/freedownloadmanager/fdm' 'Exec=${pname}' \
-      --replace "Icon=/opt/freedownloadmanager/icon.png" "Icon=$out/freedownloadmanager/icon.png"
-  '';
+      --replace-fail 'Exec=/opt/freedownloadmanager/fdm' 'Exec=${pname}' \
+      --replace-warn "Icon=/opt/freedownloadmanager/icon.png" "Icon=$out/freedownloadmanager/icon.png"
 
+    ${lib.optionalString autoStart ''
+      mkdir -p $out/etc/xdg/autostart
+      cp $out/share/applications/freedownloadmanager.desktop $out/etc/xdg/autostart/fdm.desktop
+      substituteInPlace $out/etc/xdg/autostart/fdm.desktop \
+        --replace-fail 'Exec=${pname}' 'Exec=${pname} --hidden'
+    ''}
+  '';
   meta = with lib; {
     description = "A smart and fast internet download manager";
     homepage = "https://www.freedownloadmanager.org";
     license = licenses.unfree;
     platforms = [ "x86_64-linux" ];
-    sourceProvenance = with sourceTypes; [ binaryNativeCode ];
-    maintainers = with maintainers; [  ];
   };
 }
