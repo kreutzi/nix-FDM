@@ -6,6 +6,7 @@
   autoPatchelfHook,
   udev,
   libdrm,
+  libglvnd,
   libpqxx,
   unixodbc,
   gst_all_1,
@@ -16,6 +17,7 @@
   libxcb-image,
   libxcb-keysyms,
   libxcb-render-util,
+  mesa,
   qt6,
   gtk3,
   pango,
@@ -27,11 +29,11 @@
 
 stdenv.mkDerivation rec {
   pname = "freedownloadmanager";
-  version = "6.34.4.6974";
+  version = "6.35.1.7021";
 
   src = fetchurl {
     url = "https://files2.freedownloadmanager.org/6/latest/freedownloadmanager.deb";
-    hash = "sha256-KZxb7xgLV4riI+A6EIJ5w7gOx/m84+F5JGnUbe4vxs0=";
+    hash = "sha256-3xaIWR6xG/TZBHs8rkS2bXzZd6dlDXmkS5l6LtBc9bA=";
   };
 
   unpackPhase = "dpkg-deb -x $src .";
@@ -85,22 +87,31 @@ stdenv.mkDerivation rec {
     ln -s ${lib.getLib libtiff}/lib/libtiff.so.6 $out/freedownloadmanager/lib/libtiff.so.5
 
     qtWrapperArgs+=(
+      --set QT_QPA_PLATFORM xcb
+      --set QT_XCB_GL_INTEGRATION xcb_egl
       --prefix QT_PLUGIN_PATH : "$out/freedownloadmanager/plugins"
       --prefix QML2_IMPORT_PATH : "$out/freedownloadmanager/qml"
-      --prefix LD_LIBRARY_PATH : "$out/freedownloadmanager/lib"
+      --prefix LD_LIBRARY_PATH : "$out/freedownloadmanager/lib:${
+        lib.makeLibraryPath [
+          libglvnd
+          mesa
+        ]
+      }"
     )
   '';
 
   installPhase = ''
     mkdir -p $out/bin
     mkdir -p $out/share/applications
+    mkdir -p $out/share/icons/hicolor/256x256/apps
     cp -r opt/freedownloadmanager $out
     cp -r usr/share $out
+    cp $out/freedownloadmanager/icon.png $out/share/icons/hicolor/256x256/apps/${pname}.png
     ln -s $out/freedownloadmanager/fdm $out/bin/${pname}
 
     substituteInPlace $out/share/applications/freedownloadmanager.desktop \
       --replace-fail 'Exec=/opt/freedownloadmanager/fdm' 'Exec=${pname}' \
-      --replace-warn "Icon=/opt/freedownloadmanager/icon.png" "Icon=$out/freedownloadmanager/icon.png"
+      --replace-warn "Icon=/opt/freedownloadmanager/icon.png" "Icon=${pname}"
 
     ${lib.optionalString autoStart ''
       mkdir -p $out/etc/xdg/autostart
